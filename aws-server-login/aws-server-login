@@ -1,0 +1,53 @@
+#!/bin/bash
+
+echo -e "\n\n###########################################################################\nPre-Requisites :- \n
+- All server should be configured with ssm agent with required IAM role\n
+- AWS CLI with profile should be configured in you local machine\n
+- Session Manager plugin should be installed on your local machine 
+\n###########################################################################\n\n"
+
+
+
+set +x
+echo -n "Please enter you aws profile here: "
+read profile
+
+echo $profile
+
+PS3='Please enter your choice: '
+options=("us-east-2" "us-west-2" "Quit")
+select opt in "${options[@]}"
+do
+    case $opt in
+        "us-east-2")
+	    echo "you chose $opt"
+	    region=$opt
+            break
+            ;;
+        "us-west-2")
+	    echo "you chose $opt"
+	    region=$opt
+            break
+            ;;
+        "Quit")
+	    echo "you chose $opt"
+	    region=$opt
+            exit 0
+            ;;
+        *) echo "invalid option $REPLY";;
+    esac
+done
+
+aws ec2 describe-instances --region $region --query "Reservations[*].Instances[*].[InstanceId]" --filter Name=tag-key,Values="Name" --output text --profile $profile > inst_id.txt
+aws ec2 describe-instances --region $region --query "Reservations[*].Instances[*].[PrivateIpAddress]" --filter Name=tag-key,Values="Name" --output text --profile $profile > IpAddress.txt
+aws ec2 describe-instances --query 'Reservations[].Instances[].Tags[?Key==`Name`].Value[]' --region $region --output text --profile $profile | tr '[:lower:]' '[:upper:]' | fmt -1 > namelist.txt
+
+paste  inst_id.txt IpAddress.txt namelist.txt > hostfile.txt
+cat -n hostfile.txt
+
+echo "Please enter the serial number of the server on which you want to ssh  :-   "
+read server
+
+instance_id=$(sed -n ${server}p hostfile.txt | awk '{print $1}')
+rm inst_id.txt IpAddress.txt namelist.txt hostfile.txt
+aws ssm start-session --region $region --target $instance_id --document-name AWS-StartInteractiveCommand --parameters command="bash -l" --profile $profile
